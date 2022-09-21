@@ -35,17 +35,21 @@
 (require 'dash)
 (require 's)
 
-(defun aws--s3-ls ()
-  "Execute aws s3 ls command and parse result into list."
-  (->> (shell-command-to-string "aws s3 ls")
+(defun aws--s3-ls (&optional path)
+  "Execute aws s3 ls on PATH command and parse result into list."
+  (->> (shell-command-to-string (format "aws s3 ls %s" (or path "") ))
        (s-split "\n")
        (--map (s-split " " it))))
 
-(defun aws--s3-ls-data (row)
+(comment
+ (aws--s3-ls)
+ (aws--s3-ls "ukraine-see-the-real"))
+
+(defun aws--list-buckets (row)
   "Take one ROW of `aws--s3-ls' output and prepare print data."
-  `(("Name" 80 ,(caddr row))
-    ("Date" 12 ,(car row))
-    ("Time" 12 ,(cadr row))))
+  `(("Date" 12 ,(car row))
+    ("Time" 12 ,(cadr row))
+    ("Name" 80 ,(propertize (or (caddr row) "") 'face 'bold))))
 
 (defun aws--prepare-columns (data)
   "Prepare columns from DATA."
@@ -59,7 +63,7 @@
 
 (define-derived-mode aws-s3-list-mode tabulated-list-mode "AWS - S3 Buckets"
   "Heroku app list mode."
-  (let* ((buckets (->> (aws--s3-ls) (mapcar #'aws--s3-ls-data)))
+  (let* ((buckets (->> (aws--s3-ls) (mapcar #'aws--list-buckets)))
          (columns (aws--prepare-columns buckets))
 	       (rows (aws--prepare-rows buckets)))
     (setq tabulated-list-format columns)
@@ -79,7 +83,7 @@
 
 (comment
  (setq rows (aws--s3-ls))
- (setq data (mapcar #'aws--s3-ls-data rows))
+ (setq data (mapcar #'aws--list-buckets rows))
  (aws--prepare-columns data)
  (aws--prepare-rows data)
  )
