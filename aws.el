@@ -43,10 +43,46 @@
 
 (defun aws--s3-ls-data (row)
   "Take one ROW of `aws--s3-ls' output and prepare print data."
-  `(("Name" 25 ,(caddr row) 'face 'bold)
-    ("Date" 10 ,(car row))
-    ("Time" 10 ,(cadr row))))
+  `(("Name" 80 ,(caddr row))
+    ("Date" 12 ,(car row))
+    ("Time" 12 ,(cadr row))))
 
+(defun aws--prepare-columns (data)
+  "Prepare columns from DATA."
+  (->> (--map (list (car it) (cadr it)) (car data))
+       (apply #'vector)))
+
+(defun aws--prepare-rows (data)
+  "Prepare rows from DATA."
+  (let ((lists   (-map (lambda (el) (->> (-flatten (-map 'cddr el)) )) data)))
+    (-map (lambda (el) `(nil [,@el])) lists)))
+
+(define-derived-mode aws-s3-list-mode tabulated-list-mode "AWS - S3 Buckets"
+  "Heroku app list mode."
+  (let* ((buckets (->> (aws--s3-ls) (mapcar #'aws--s3-ls-data)))
+         (columns (aws--prepare-columns buckets))
+	       (rows (aws--prepare-rows buckets)))
+    (setq tabulated-list-format columns)
+    (setq tabulated-list-entries rows)
+    (tabulated-list-init-header)
+    (tabulated-list-print)
+    (hl-line-mode)))
+
+;;;###autoload
+(defun aws-s3-list ()
+  "List AWS S3 buckets"
+  (interactive)
+  (let ((buff "*AWS - S3 Buckets*"))
+    (switch-to-buffer buff)
+    (aws-s3-list-mode)))
+
+
+(comment
+ (setq rows (aws--s3-ls))
+ (setq data (mapcar #'aws--s3-ls-data rows))
+ (aws--prepare-columns data)
+ (aws--prepare-rows data)
+ )
 
 
 (provide 'aws)
