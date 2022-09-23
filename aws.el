@@ -5,7 +5,7 @@
 ;; Author: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Maintainer: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Version: 0.1
-;; Package-Requires: ((emacs "27.1"))
+;; Package-Requires: ((emacs "28.2") (dash "2.19.1") (s "1.13.0"))
 ;;
 ;; Created: 21 Sep 2022
 ;;
@@ -35,13 +35,24 @@
 (require 'dash)
 (require 's)
 
-(defun aws--s3-ls (&optional path)
-  "Execute aws s3 ls on PATH command and parse result into list."
-  (->> (shell-command-to-string (format "aws s3 ls %s" (or path "") ))
+(defgroup aws nil "AWS.el group." :group 'convenience)
+
+(defmacro aws-comment (&rest _) nil)
+
+(defun aws--s3-ls-format (output)
+  "Take OUTPUT from aws s3 ls and format it."
+  (->> output
        (s-split "\n")
        (--map (s-split " " it))))
 
-(comment
+(defun aws--s3-ls (&optional path)
+  "Execute aws s3 ls on PATH command and parse result into list."
+  (-> (shell-command-to-string (format "aws s3 ls %s" (or path "")))
+      aws--s3-ls-format))
+
+(setq example (aws--s3-ls))
+
+(aws-comment
  (aws--s3-ls)
  (aws--s3-ls "ukraine-see-the-real"))
 
@@ -81,7 +92,7 @@
     (aws-s3-list-mode)))
 
 
-(comment
+(aws-comment
  (use-package s3ed)
  (setq rows (aws--s3-ls))
  (setq data (mapcar #'aws--list-buckets rows))
