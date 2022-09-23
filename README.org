@@ -1,1 +1,4 @@
 #+TITLE: Emacs interface for AWS CLI
+
+* Babashka tasks
+We use [[https://babashka.org][babashka]] tasks and [[https://github.com/doublep/eldev/][eldev]] to prepare, lint and test the project. Once eldev and babashka are installed run ~bb tasks~ to see the list of available commands.
