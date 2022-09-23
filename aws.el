@@ -82,6 +82,7 @@
 
 
 (comment
+ (use-package s3ed)
  (setq rows (aws--s3-ls))
  (setq data (mapcar #'aws--list-buckets rows))
  (aws--prepare-columns data)
