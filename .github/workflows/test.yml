@@ -24,13 +24,18 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Setup Babashka
-        run: |
-          # Adding `nixpkgs-unstable` channel for more up-to-date binaries, skip this if you already have `nixpkgs-unstable` in your channel list
-          nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs-unstable
-          nix-channel --update
-          nix-env -iA nixpkgs-unstable.babashka
+        uses: turtlequeue/setup-babashka@v1.5.0
+        with:
+          babashka-version: 0.8.156
 
-      - name: Setup eldev
+      # - name: Setup Babashka
+      #   run: |
+      #     # Adding `nixpkgs-unstable` channel for more up-to-date binaries, skip this if you already have `nixpkgs-unstable` in your channel list
+      #     nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs-unstable
+      #     nix-channel --update
+      #     nix-env -iA nixpkgs-unstable.babashka
+
+      - name: Setup Eldev
         run: bb install-eldev
 
       - name: Install dependencies
