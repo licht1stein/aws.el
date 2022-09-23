@@ -25,8 +25,11 @@ jobs:
 
       - name: Setup Babashka
         uses: turtlequeue/setup-babashka@v1.5.0
-        with:
-          babashka-version: 0.9.162
+        run: |
+          # Adding `nixpkgs-unstable` channel for more up-to-date binaries, skip this if you already have `nixpkgs-unstable` in your channel list
+          nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs-unstable
+          nix-channel --update
+          nix-env -iA nixpkgs-unstable.babashka
 
       - name: Setup eldev
         run: bb install-eldev
