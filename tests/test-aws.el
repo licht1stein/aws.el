@@ -5,7 +5,7 @@
 ;; Author: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Maintainer: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Version: 0.1
-;; Package-Requires: ((emacs "28.2") (buttercup "1.26"))
+;; Package-Requires: ((emacs "27.2") (buttercup "1.26"))
 ;;
 ;; Created: 23 Sep 2022
 ;;

@@ -1,0 +1,9 @@
+{:paths ["bb"]
+ :deps {}
+ :tasks
+ {prepare {:doc "Install dependencies"
+           :task (shell "eldev -C --unstable -p -dtT prepare")}
+  lint {:doc "Lint code files"
+        :task (shell "eldev -C --unstable -T lint")}
+  test {:doc "Run tests"
+        :task (shell "eldev -C --unstable -T test")}}}

@@ -5,7 +5,7 @@
 ;; Author: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Maintainer: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Version: 0.1
-;; Package-Requires: ((emacs "28.2") (dash "2.19.1") (s "1.13.0"))
+;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0"))
 ;;
 ;; Created: 21 Sep 2022
 ;;
@@ -30,6 +30,7 @@
 ;; This file is not part of GNU Emacs.
 ;;
 ;;; Commentary:
+;; Interface for AWS CLI.
 ;;
 ;;; Code:
 (require 'dash)
@@ -37,7 +38,7 @@
 
 (defgroup aws nil "AWS.el group." :group 'convenience)
 
-(defmacro aws-comment (&rest _) nil)
+(defmacro aws-comment (&rest _) "Ignore body return nil." nil)
 
 (defun aws--s3-ls-format (output)
   "Take OUTPUT from aws s3 ls and format it."
@@ -49,8 +50,6 @@
   "Execute aws s3 ls on PATH command and parse result into list."
   (-> (shell-command-to-string (format "aws s3 ls %s" (or path "")))
       aws--s3-ls-format))
-
-(setq example (aws--s3-ls))
 
 (aws-comment
  (aws--s3-ls)
@@ -76,7 +75,7 @@
   "Heroku app list mode."
   (let* ((buckets (->> (aws--s3-ls) (mapcar #'aws--list-buckets)))
          (columns (aws--prepare-columns buckets))
-	       (rows (aws--prepare-rows buckets)))
+         (rows (aws--prepare-rows buckets)))
     (setq tabulated-list-format columns)
     (setq tabulated-list-entries rows)
     (tabulated-list-init-header)
@@ -85,20 +84,18 @@
 
 ;;;###autoload
 (defun aws-s3-list ()
-  "List AWS S3 buckets"
+  "List AWS S3 buckets."
   (interactive)
   (let ((buff "*AWS - S3 Buckets*"))
     (switch-to-buffer buff)
     (aws-s3-list-mode)))
-
 
 (aws-comment
  (use-package s3ed)
  (setq rows (aws--s3-ls))
  (setq data (mapcar #'aws--list-buckets rows))
  (aws--prepare-columns data)
- (aws--prepare-rows data)
- )
+ (aws--prepare-rows data))
 
 
 (provide 'aws)
