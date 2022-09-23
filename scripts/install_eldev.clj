@@ -3,6 +3,9 @@
             [clojure.string :as str]))
 
 (defn installed? []
-  (-> (sh "eldev")
-      :out
-      (str/includes? "Usage: eldev")))
+  (try
+    (sh "eldev")
+    true
+    (catch Exception _
+            false)))
+
