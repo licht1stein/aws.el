@@ -8,6 +8,10 @@
                            (shell "curl -fsSL https://raw.github.com/doublep/eldev/master/bin/eldev > eldev")
                            (shell "chmod a+x eldev"))
                          (println "Eldev already installed"))}
+
+  el {:requires ([babashka.curl :as curl]
+                 [install-eldev :as ie])
+      :task (ie/download)}
   prepare {:doc "Install dependencies"
            :task (shell "eldev -C --unstable -p -dtT prepare")}
   lint {:doc "Lint code files"

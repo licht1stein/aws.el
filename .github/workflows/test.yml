@@ -36,7 +36,7 @@ jobs:
       #     nix-env -iA nixpkgs-unstable.babashka
 
       - name: Setup Eldev
-        run: bb install-eldev
+        run: curl -fsSL https://raw.github.com/doublep/eldev/master/bin/eldev > eldev && chmod a+x eldev
 
       - name: Install dependencies
         run: bb prepare
