@@ -4,7 +4,9 @@
  {install-eldev {:requires ([install-eldev :as ie])
                  :doc "Install eldev"
                  :task (if-not (ie/installed?)
-                         (shell "curl -fsSL https://raw.github.com/doublep/eldev/master/bin/eldev > eldev && chmod a+x eldev")
+                         (do
+                           (shell "curl -fsSL https://raw.github.com/doublep/eldev/master/bin/eldev > eldev")
+                           (shell "chmod a+x eldev"))
                          (println "Eldev already installed"))}
   prepare {:doc "Install dependencies"
            :task (shell "eldev -C --unstable -p -dtT prepare")}
