@@ -5,7 +5,7 @@
 ;; Author: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Maintainer: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Version: 0.1
-;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0"))
+;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0") (xht "2.0.0"))
 ;;
 ;; Created: 21 Sep 2022
 ;;
@@ -35,6 +35,7 @@
 ;;; Code:
 (require 'dash)
 (require 's)
+(require 'xht)
 
 (defgroup aws nil "AWS.el group." :group 'convenience)
 
@@ -97,6 +98,67 @@
  (aws--prepare-columns data)
  (aws--prepare-rows data))
 
+;; 2023-07-23 Resume
+(defun aws--format-ts (ts)
+  "Format AWS TS to human readable string."
+  (format-time-string "%Y-%m-%d %H:%M:%S" (seconds-to-time (/ ts 1000))))
+
+(defun aws--command (cmd)
+  "Run a cli CMD and return output as a hash-map."
+  (->> cmd
+       (format "aws %s --output json")
+       shell-command-to-string
+       h<-json*))
+
+(defun aws--describe-log-groups ()
+  "Get available log groups."
+  (aws--command "logs describe-log-groups"))
+
+(defun aws--log-group-row (group)
+  "Turn hash table GROUP produced by `aws--describe-log-groups' into table row."
+  (h-let group
+    `(("Name" 80 ,.logGroupName)
+      ("Created" 20 ,(aws--format-ts .creationTime))
+      ("Retention" 7 ,(format "%s" (or .retentionInDays 0)))
+      ;; ("FilterCount" 12 ,(format "%s" .metricFilterCount))
+      ;; ("ARN" 12 ,.arn)
+      ;; ("Stored Bytes" ,.storedBytes)
+      )))
+
+(defun aws--log-groups-table (map)
+  "Turn MAP produced by `aws--describe-log-groups' into table."
+  (mapcar #'aws--log-group-row (h-get map "logGroups")))
+
+(define-derived-mode aws-log-groups-mode tabulated-list-mode "AWS - Log Groups"
+  "Heroku app list mode."
+  (let* ((groups (->> (aws--describe-log-groups) aws--log-groups-table))
+         (columns (aws--prepare-columns groups))
+         (rows (aws--prepare-rows groups)))
+    (setq tabulated-list-format columns)
+    (setq tabulated-list-entries rows)
+    (tabulated-list-init-header)
+    (tabulated-list-print)
+    (hl-line-mode)))
+
+;;;###autoload
+(defun aws-log-groups ()
+  "List all CloudWatch log groups."
+  (interactive)
+  (let ((buff "*AWS - Log Groups"))
+    (switch-to-buffer-other-window buff)
+    (aws-log-groups-mode)))
+
+(aws-comment
+ (setq map (aws--describe-log-groups))
+ (setq groups (h-get s "logGroups"))
+ (setq group (aref groups 0))
+ (h-htbl-form s)
+ (h-ht-form s)
+ (h-keys s)
+ (setq sample (aref grps 0))
+ (h-keys sample)
+ (h-get sample "logGroupName")
+ )
 
 (provide 'aws)
 ;;; aws.el ends here
