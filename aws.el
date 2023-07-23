@@ -45,8 +45,8 @@
 (defcustom aws-logs-default-output-format "short"
   "Default output format for Cloudwatch logs."
   :type '(radio (const :tag "short" "short")
-                (const :tag "json" "json")
-                (const :tag "detailed" "detailed"))
+                (const :tag "detailed" "detailed")
+                (const :tag "json" "json"))
   :group 'aws)
 
 ;;  === COMMON FUNCTIONS ===
@@ -267,23 +267,29 @@ Other:
   "Propertized S as `transient-argument'."
   (propertize s 'face 'transient-argument))
 
-(defun aws--logs-tail (&rest args)
-  "Get AWS logs for log group using ARGS."
+(defun aws-logs (log-group &rest args)
+  "Get AWS logs for LOG-GROUP using ARGS."
   (message "Log tail args: %s" args)
-  (let* ((buffer (format "*AWS Logs: %s*" aws--selected-log-group)))
-    (message "Getting AWS logs for %s..." aws--selected-log-group)
+  (let* ((buffer (format "*AWS Logs: %s*" log-group)))
+    (message "Getting AWS logs for %s..." log-group)
     (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" aws--selected-log-group args)
     (with-current-buffer buffer
       (aws-logs-mode)
       (pop-to-buffer-same-window buffer))))
 
 (defun aws--logs-tail-from-groups (args)
+  "Tail logs from selected AWS log groups.
+   
+  ARGS represents the arguments passed to the aws-logs function."
   (interactive  (list (transient-args 'aws-log-groups-tail-log)))
-  (apply #'aws--logs-tail args))
+  (apply #'aws-logs aws--selected-log-group args))
 
 (defun aws--logs-tail-from-streams (args)
+  "Tail logs from selected AWS log streams.
+   
+  ARGS represents the arguments passed to the aws-logs function."
   (interactive  (list (transient-args 'aws-log-streams-tail-log)))
-  (apply #'aws--logs-tail args))
+  (apply #'aws-logs aws--selected-log-group args))
 
 ;; ==================== TRANSIENT =====================
 (transient-define-prefix aws-log-groups-main ()
