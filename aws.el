@@ -5,7 +5,7 @@
 ;; Author: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Maintainer: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0") (ht "2.3"))
+;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0") (ht "2.3") (transient "0.4.1"))
 ;;
 ;; Created: 21 Sep 2022
 ;;
@@ -38,6 +38,7 @@
 (require 'xht)
 (require 'comint)
 (require 'cl-lib)
+(require 'transient)
 
 (defgroup aws nil "AWS.el group." :group 'convenience)
 
@@ -266,11 +267,93 @@ Accept keyword arguments:
   (setq aws--selected-log-group (aws--selected-row))
   (aws-log-streams-mode))
 
+(defun aws--logs-from-transient (&optional args)
+  "Get AWS logs for log group using ARGS."
+  (interactive (list (transient-args 'aws-log-groups-transient)))
+  (let* ((buffer (format "*AWS Logs: %s*" (aws--selected-row))))
+    (message "Getting AWS logs for %s..." (aws--selected-row))
+    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" (aws--selected-row) args)
+    (with-current-buffer buffer
+      (aws-logs-mode)
+      (pop-to-buffer-same-window buffer))))
+
 (bind-keys
  :map aws-log-groups-mode-map
  ("RET" . aws--log-group-list-streams)
- ("l" . (lambda () (interactive) (aws-logs (aws--selected-row) :follow t)))
+ ("l" . (lambda () (interactive)
+          (setq aws--selected-log-group (aws--selected-row))
+          (aws-log-groups-transient)))
  ("g" . aws-log-groups))
+
+(defun aws--select-log-stream (&rest _)
+  "Get options and prompt user for log stream name."
+  (let* ((res (aws--describe-log-streams aws--selected-log-group))
+         (stream-names (mapcar (lambda (m) (h-get m "logStreamName")) res))
+         (choices (->> stream-names -distinct)))
+    (completing-read "Select log stream: " choices)))
+
+
+(defun aws--make-json-filter-pattern (key value)
+  (format "{$.%s = %s}" key value))
+
+(defun aws--prompt-for-log-filter-pattern (&rest _)
+  (let* ((json-p (y-or-n-p "Would you like to define a JSON based filter?")))
+    (if json-p
+        (aws--make-json-filter-pattern
+         (read-from-minibuffer "JSON Key: ")
+         (read-from-minibuffer "JSON Value: "))
+      (read-from-minibuffer "Enter filter: "))))
+
+;; ==================== TRANSIENT =====================
+(transient-define-argument aws-log-group-stream-names ()
+  :description "Select log stream (will fetch from AWS)"
+  :class 'transient-option
+  :argument "--log-stream-name="
+  :choices #'aws--select-log-stream)
+
+(transient-define-argument aws-log-group-filter-pattern ()
+  :description "Set filter pattern to stream"
+  :class 'transient-option
+  :argument "--filter-pattern="
+  :reader #'aws--prompt-for-log-filter-pattern)
+
+(transient-define-argument aws-log-format ()
+  :description "Format to display logs"
+  :class 'transient-option
+  :argument "--format="
+  :choices '("short" "detailed" "json"))
+
+
+;; {
+;;     "Msg": "IndexerBasis",
+;;     "DatomicCloudIndexerBasis": {
+;;         "13bcacf8-27f7-49aa-a6fe-ddf00abf12ec": {
+;;             "MemIdxBytes": 24487766
+;;         }
+;;     },
+;;     "Type": "Event",
+;;     "Tid": 54,
+;;     "Timestamp": 1690127578961
+;; }
+
+
+(transient-define-prefix aws-log-groups-transient ()
+  "AWS log groups transient."
+  :value (list "--follow" "--format=json")
+  [["Options"
+    ("-f" "filter pattern to use" aws-log-group-filter-pattern)
+    ("-n" "log stream names (fetch options)" aws-log-group-stream-names)
+    ("-N" "prefix to filter logs by" "--log-stream-name-prefix=")
+    ("-o" "output format" aws-log-format)
+    ("-s" "since (s, m, h, d, w) e.g. 10m" "--since=")
+    ("-t" "continually stream logs" "--follow")]
+   ["Global options"
+    ("-d" "debug" "--debug")]]
+  ["Execute"
+   ("l" "tail logs" aws--logs-from-transient)])
+
+
+;; ==================== END TRANSIENT =====================
 
 ;; ==================== USER COMMANDS =====================
 ;;;###autoload
