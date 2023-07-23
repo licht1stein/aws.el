@@ -4,7 +4,7 @@
 ;;
 ;; Author: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Maintainer: Mykhaylo Bilyanskyy <mb@m1k.pw>
-;; Version: 0.1
+;; Version: 0.0.1
 ;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0") (xht "2.0.0"))
 ;;
 ;; Created: 21 Sep 2022
@@ -39,100 +39,9 @@
 
 (defgroup aws nil "AWS.el group." :group 'convenience)
 
+;;  === COMMON FUNCTIONS ===
 (defmacro aws-comment (&rest _) "Ignore body return nil." nil)
 
-(defun aws--s3-ls-format (output)
-  "Take OUTPUT from aws s3 ls and format it."
-  (->> output
-       (s-split "\n")
-       (--map (s-split " " it))))
-
-(defun aws--s3-ls (&optional path)
-  "Execute aws s3 ls on PATH command and parse result into list."
-  (-> (shell-command-to-string (format "aws s3 ls %s" (or path "")))
-      aws--s3-ls-format))
-
-(aws-comment
- (aws--s3-ls)
- (aws--s3-ls "ukraine-see-the-real"))
-
-(defun aws--list-buckets (row)
-  "Take one ROW of `aws--s3-ls' output and prepare print data."
-  `(("Date" 12 ,(car row))
-    ("Time" 12 ,(cadr row))
-    ("Name" 80 ,(propertize (or (caddr row) "") 'face 'bold))))
-
-(defun aws--prepare-columns (data)
-  "Prepare columns from DATA."
-  (->> (--map (list (car it) (cadr it)) (car data))
-       (apply #'vector)))
-
-(defun aws--prepare-rows (data)
-  "Prepare rows from DATA."
-  (let ((lists   (-map (lambda (el) (->> (-flatten (-map 'cddr el)) )) data)))
-    (-map (lambda (el) `(nil [,@el])) lists)))
-
-(define-derived-mode aws-s3-list-mode tabulated-list-mode "AWS - S3 Buckets"
-  "Heroku app list mode."
-  (let* ((buckets (->> (aws--s3-ls) (mapcar #'aws--list-buckets)))
-         (columns (aws--prepare-columns buckets))
-         (rows (aws--prepare-rows buckets)))
-    (setq tabulated-list-format columns)
-    (setq tabulated-list-entries rows)
-    (tabulated-list-init-header)
-    (tabulated-list-print)
-    (hl-line-mode)))
-
-;;;###autoload
-(defun aws-s3-list ()
-  "List AWS S3 buckets."
-  (interactive)
-  (let ((buff "*AWS - S3 Buckets*"))
-    (switch-to-buffer buff)
-    (aws-s3-list-mode)))
-
-(aws-comment
- (use-package s3ed)
- (setq rows (aws--s3-ls))
- (setq data (mapcar #'aws--list-buckets rows))
- (aws--prepare-columns data)
- (aws--prepare-rows data))
-
-;; 2023-07-23 Resume
-
-;; COMMANDS
-;; =====================================================
-(defun aws--command (cmd &rest cmds)
-  "Run a cli CMD and return output as a hash-map, concat CMDS."
-  (let* ((output (->> (cons cmd cmds)
-                      (s-join " ")
-                      (format "aws %s --output json")
-                      shell-command-to-string)))
-    (if (s-contains-p "An error occurred" output)
-        (error "CLI Error: %s" (s-trim output))
-      (condition-case err
-          (h<-json* output)
-        (error (message "Failed to parse CLI output: %S" err))))))
- 
-(defun aws--describe-log-groups ()
-  "Get available log groups."
-  (message "Getting log groups...")
-  (h-get (aws--command "logs describe-log-groups") "logGroups"))
-
-(defun aws--describe-log-streams (log-group)
-  "Get available log streams for LOG-GROUP."
-  (message "Getting log streams for %s..." log-group)
-  (h-get (aws--command "logs describe-log-streams --log-group-name" log-group) "logStreams"))
-
-(aws-comment
- (setq log-group "datomic-blaster-os-v1")
- (aws--describe-log-streams "datomic-blaster-os-v1")
- )
-
-;; END COMMANDS
-;; =====================================================
-
-;;  === Common Functions ===
 (defun aws--format-ts (ts)
   "Format AWS TS to human readable string."
   (if (integerp ts)
@@ -162,14 +71,60 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
       (tabulated-list-init-header)
       (tabulated-list-print)
       (hl-line-mode))))
-;; === End Common Functions ===
 
+(defun aws--sort-table (original-list column &optional reverse)
+  "Sort ORIGINAL-LIST by COLUMN by alphabet. REVERSE if not nil."
+  (let* ((sorted (sort original-list
+                       (lambda (a b)
+                         (string< (caddr (assoc column b))
+                                  (caddr (assoc column a)))))))
+    (if reverse
+        (reverse sorted)
+      sorted)))
+;; === END COMMON FUNCTIONS ===
+
+;; CLI COMMANDS
+;; =====================================================
+(defun aws--command (cmd &rest cmds)
+  "Run a cli CMD and return output as a hash-map, concat CMDS."
+  (let* ((output (->> (cons cmd cmds)
+                      (s-join " ")
+                      (format "aws %s --output json")
+                      shell-command-to-string)))
+    (if (s-contains-p "An error occurred" output)
+        (error "CLI Error: %s" (s-trim output))
+      (condition-case err
+          (h<-json* output)
+        (error (message "Failed to parse CLI output: %S" err))))))
+ 
+(defun aws--describe-log-groups ()
+  "Get available log groups."
+  (message "Getting log groups...")
+  (h-get (aws--command "logs describe-log-groups") "logGroups"))
+
+(defun aws--describe-log-streams (log-group)
+  "Get available log streams for LOG-GROUP."
+  (message "Getting log streams for %s..." log-group)
+  (h-get (aws--command "logs describe-log-streams --log-group-name" log-group) "logStreams"))
+
+(aws-comment
+ (setq log-group "datomic-blaster-os-v1")
+ (aws--describe-log-streams "datomic-blaster-os-v1")
+ )
+
+;; END CLI COMMANDS
+;; =====================================================
+
+;; WORKING WITH AWS CLOUDWATCH LOGS (aws logs)
 ;; === Log Streams ===
 (defvar aws--selected-log-group nil "Currently selected AWS log group.")
 
 (aws-comment
  (aws--describe-log-streams-selected-log-group)
- (aws--describe-log-streams "datomic-blaster-os")
+ (setq streams (aws--describe-log-streams "datomic-blaster-os"))
+ (setq tbl (aws--log-groups-table streams))
+
+ (aws--sort-table-str tbl "Created" t)
  )
 
 (defun aws--log-stream-row (stream)
@@ -190,7 +145,7 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
 
 (defun aws--log-streams-table (streams)
   "Turn STREAMS produced by `aws--describe-log-streams' into table."
-  (mapcar #'aws--log-stream-row streams))
+  (aws--sort-table (mapcar #'aws--log-stream-row streams) "Created"))
 
 
 (define-aws-list-mode aws-log-streams-mode "AWS - Log Streams" aws--prepare-log-streams-selected-log-group)
@@ -207,15 +162,11 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
   (h-let group
     `(("Name" 80 ,.logGroupName)
       ("Created" 20 ,(aws--format-ts .creationTime))
-      ("Retention" 7 ,(format "%s" (or .retentionInDays 0)))
-      ;; ("FilterCount" 12 ,(format "%s" .metricFilterCount))
-      ;; ("ARN" 12 ,.arn)
-      ;; ("Stored Bytes" ,.storedBytes)
-      )))
+      ("Retention" 7 ,(format "%s" (or .retentionInDays 0))))))
 
 (defun aws--log-groups-table (groups)
   "Turn GROUPS produced by `aws--describe-log-groups' into table."
-  (mapcar #'aws--log-group-row groups))
+  (aws--sort-table (mapcar #'aws--log-group-row groups) "Name"))
 
 (defun aws--prepare-log-groups-table ()
   "Run `aws--describe-log-groups' then prepare with `aws--log-groups-table'."
@@ -234,8 +185,7 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
  ("RET" . aws--log-group-list-streams)
  ("g" . aws-log-groups))
 
-;; ==================== User Commands =====================
-                                      
+;; ==================== USER COMMANDS =====================
 ;;;###autoload
 (defun aws-log-groups ()
   "List all CloudWatch log groups."
