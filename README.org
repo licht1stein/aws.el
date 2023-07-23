@@ -8,7 +8,7 @@
     :straight (:type git :host github :repo "licht1stein/aws.el"))
 #+end_src
 
-** Epaca
+** Elpaca
 #+begin_src emacs-lisp
   (use-package aws
     :elpaca (:type git :host github :repo "licht1stein/aws.el"))
