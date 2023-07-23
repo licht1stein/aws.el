@@ -36,7 +36,6 @@ If you get an error about missing ~xht~ dependency, install it before ~aws.el~:
 Available commands:
 - ~aws-log-groups~
 - ~aws-log-streams~
-- ~aws-logs~
 
 ** Elpaca
 #+begin_src emacs-lisp

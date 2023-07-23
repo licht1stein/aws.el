@@ -197,24 +197,6 @@ Other:
 
 (define-derived-mode aws-logs-mode comint-mode "AWS Logs" (read-only-mode))
 
-;;;###autoload
-(cl-defun aws-logs (log-group &key streams follow)
-  "Get AWS logs for LOG-GROUP.
-
-Accept keyword arguments:
-:streams STREAMS to filter by
-:follow FOLLOW - tail logs"
-  (interactive (list (read-from-minibuffer "Log group to stream: ")))
-  (let* ((buffer (format "*AWS Logs: %s*" log-group))
-         (follow-arg (when follow '("--follow")))
-         (streams-arg (when streams (list "--log-stream-names" streams)))
-         (args (append follow-arg streams-arg)))
-    (message "Getting AWS logs: %s..." log-group)
-    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" log-group args)
-    (with-current-buffer buffer
-      (aws-logs-mode)
-      (pop-to-buffer-same-window buffer))))
-
 (defun aws--log-stream-row (stream)
   "Turn a log STREAM into table row."
   (h-let stream
@@ -235,16 +217,6 @@ Accept keyword arguments:
   (mapcar #'aws--log-stream-row streams))
 
 (define-aws-list-mode aws-log-streams-mode "AWS - Log Streams" aws--prepare-log-streams-selected-log-group)
-
-(defun aws--logs-stream-list-tail-logs ()
-  "Tail logs of the currently selected AWS Log Stream in the AWS Log Group from the custom AWS Log Viewer interface."
-  (interactive)
-  (let ((stream (aws--selected-row)))
-    (aws-logs aws--selected-log-group :streams stream :follow t)))
-
-(bind-keys
- :map aws-log-streams-mode-map
- ("RET" . aws--logs-stream-list-tail-logs))
 
 ;; ==== Log Groups ====
 (defun aws--log-group-row (group)
@@ -271,17 +243,6 @@ Accept keyword arguments:
   (setq aws--selected-log-group (aws--selected-row))
   (aws-log-streams-mode))
 
-(defun aws--logs-from-transient (&optional args)
-  "Get AWS logs for log group using ARGS."
-  (interactive (list (transient-args 'aws-log-groups-transient)))
-  (message "Transient args: %s" args)
-  (let* ((buffer (format "*AWS Logs: %s*" aws--selected-log-group)))
-    (message "Getting AWS logs for %s..." aws--selected-log-group)
-    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" aws--selected-log-group args)
-    (with-current-buffer buffer
-      (aws-logs-mode)
-      (pop-to-buffer-same-window buffer))))
-
 (defun aws--select-log-stream (&rest _)
   "Get options and prompt user for log stream name."
   (let* ((res (aws--describe-log-streams aws--selected-log-group))
@@ -303,7 +264,26 @@ Accept keyword arguments:
       (read-from-minibuffer "Enter filter: "))))
 
 (defun aws--bold (s)
+  "Propertized S as `transient-argument'."
   (propertize s 'face 'transient-argument))
+
+(defun aws--logs-tail (&rest args)
+  "Get AWS logs for log group using ARGS."
+  (message "Log tail args: %s" args)
+  (let* ((buffer (format "*AWS Logs: %s*" aws--selected-log-group)))
+    (message "Getting AWS logs for %s..." aws--selected-log-group)
+    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" aws--selected-log-group args)
+    (with-current-buffer buffer
+      (aws-logs-mode)
+      (pop-to-buffer-same-window buffer))))
+
+(defun aws--logs-tail-from-groups (args)
+  (interactive  (list (transient-args 'aws-log-groups-tail-log)))
+  (apply #'aws--logs-tail args))
+
+(defun aws--logs-tail-from-streams (args)
+  (interactive  (list (transient-args 'aws-log-streams-tail-log)))
+  (apply #'aws--logs-tail args))
 
 ;; ==================== TRANSIENT =====================
 (transient-define-prefix aws-log-groups-main ()
@@ -351,7 +331,7 @@ Accept keyword arguments:
                 ["Global options"
                  ("-d" "debug" "--debug")]]
   ["Execute"
-   ("l" "tail logs" aws--logs-from-transient)])
+   ("l" "tail logs" aws--logs-tail-from-groups)])
 
 (transient-define-prefix aws-log-streams-tail-log ()
   "AWS tail logs transient."
@@ -368,7 +348,7 @@ Accept keyword arguments:
                 ["Global options"
                  ("-d" "debug" "--debug")]]
   ["Execute"
-   ("l" "tail logs" aws--logs-from-transient)])
+   ("l" "tail logs" aws--logs-tail-from-streams)])
 
 
 ;; ==================== END TRANSIENT =====================
