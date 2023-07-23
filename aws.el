@@ -44,10 +44,13 @@
 ;;  === COMMON FUNCTIONS ===
 (defmacro aws-comment (&rest _) "Ignore body return nil." nil)
 
-(defun aws--format-ts (ts)
-  "Format AWS TS to human readable string."
+(cl-defun aws--format-ts (ts &key (format "%F %R"))
+  "Format AWS TS to human readable string.
+
+Accepted keword args:
+:format FORMAT - format-string to pass to `format-time-string'"
   (if (integerp ts)
-      (format-time-string "%Y-%m-%d %H:%M:%S" (seconds-to-time (/ ts 1000)))
+      (format-time-string format (seconds-to-time (/ ts 1000)))
     "N/A"))
 
 (defun aws--selected-row ()
@@ -243,7 +246,8 @@ Accept keyword arguments:
   "Turn hash table GROUP produced by `aws--describe-log-groups' into table row."
   (h-let group
     `(("Name" 80 ,.logGroupName)
-      ("Created" 20 ,(aws--format-ts .creationTime))
+      ("Created Date" 14 ,(aws--format-ts .creationTime :format "%F"))
+      ("Created Time" 14 ,(aws--format-ts .creationTime :format "%T"))
       ("Retention" 7 ,(format "%s" (or .retentionInDays 0))))))
 
 (defun aws--log-groups-table (groups)
