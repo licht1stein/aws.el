@@ -42,6 +42,13 @@
 
 (defgroup aws nil "AWS.el group." :group 'convenience)
 
+(defcustom aws-logs-default-output-format "short"
+  "Default output format for Cloudwatch logs."
+  :type '(radio (const :tag "short" "short")
+                (const :tag "json" "json")
+                (const :tag "detailed" "detailed"))
+  :group 'aws)
+
 ;;  === COMMON FUNCTIONS ===
 (defmacro aws-comment (&rest _) "Ignore body return nil." nil)
 
@@ -292,19 +299,24 @@ Accept keyword arguments:
          (choices (->> stream-names -distinct)))
     (completing-read "Select log stream: " choices)))
 
-
-(defun aws--make-json-filter-pattern (key value)
+(defun aws--format-json-filter-pattern (key value)
+  "Format json filter pattern for aws as KEY = VALUE."
   (format "{$.%s = %s}" key value))
 
 (defun aws--prompt-for-log-filter-pattern (&rest _)
+  "Prompt the user to define a filter pattern."
   (let* ((json-p (y-or-n-p "Would you like to define a JSON based filter?")))
     (if json-p
-        (aws--make-json-filter-pattern
+        (aws--format-json-filter-pattern
          (read-from-minibuffer "JSON Key: ")
          (read-from-minibuffer "JSON Value: "))
       (read-from-minibuffer "Enter filter: "))))
 
+(defun aws--bold (s)
+  (propertize s 'face 'transient-argument))
+
 ;; ==================== TRANSIENT =====================
+
 (transient-define-argument aws-log-group-stream-names ()
   :description "Select log stream (will fetch from AWS)"
   :class 'transient-option
@@ -312,7 +324,7 @@ Accept keyword arguments:
   :choices #'aws--select-log-stream)
 
 (transient-define-argument aws-log-group-filter-pattern ()
-  :description "Set filter pattern to stream"
+  :description "Set filter pattern to stream, use dot notation."
   :class 'transient-option
   :argument "--filter-pattern="
   :reader #'aws--prompt-for-log-filter-pattern)
@@ -323,30 +335,17 @@ Accept keyword arguments:
   :argument "--format="
   :choices '("short" "detailed" "json"))
 
-
-;; {
-;;     "Msg": "IndexerBasis",
-;;     "DatomicCloudIndexerBasis": {
-;;         "13bcacf8-27f7-49aa-a6fe-ddf00abf12ec": {
-;;             "MemIdxBytes": 24487766
-;;         }
-;;     },
-;;     "Type": "Event",
-;;     "Tid": 54,
-;;     "Timestamp": 1690127578961
-;; }
-
-
 (transient-define-prefix aws-log-groups-transient ()
   "AWS log groups transient."
-  :value (list "--follow" "--format=json")
-  [["Options"
-    ("-f" "filter pattern to use" aws-log-group-filter-pattern)
+  :value (list "--follow" (format "--format=%s" aws-logs-default-output-format))
+  [:description (lambda () (s-concat "Tail Logs for " (aws--bold aws--selected-log-group) "\n"))
+   ["Options"
+    ("-f" "filter pattern to use (for json use dot-notation)" aws-log-group-filter-pattern)
     ("-n" "log stream names (fetch options)" aws-log-group-stream-names)
     ("-N" "prefix to filter logs by" "--log-stream-name-prefix=")
     ("-o" "output format" aws-log-format)
     ("-s" "since (s, m, h, d, w) e.g. 10m" "--since=")
-    ("-t" "continually stream logs" "--follow")]
+    ("-F" "continually stream logs" "--follow")]
    ["Global options"
     ("-d" "debug" "--debug")]]
   ["Execute"
