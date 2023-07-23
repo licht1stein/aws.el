@@ -5,7 +5,29 @@
 ** Straight
 #+begin_src emacs-lisp
   (use-package aws
+    :straight (:type git :host github :repo "licht1stein/aws.el"))
+#+end_src
+
+** Epaca
+#+begin_src emacs-lisp
+  (use-package aws
     :elpaca (:type git :host github :repo "licht1stein/aws.el"))
+#+end_src
+** Missing xht
+If you get an error about missing ~xht~ dependency, install it before ~aws.el~:
+
+#+begin_src elisp
+(use-package xht
+  :elpaca (:type git :repo "https://git.sr.ht/~flandrew/xht")
+  :commands (global-xht-fontify-mode
+             global-xht-do-mode
+             xht-fontify-mode
+             xht-do-mode
+             xht-see-readme)
+  :config
+  (global-xht-fontify-mode)
+  (global-xht-do-mode))
+
 #+end_src
 
 * Usage
