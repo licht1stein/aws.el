@@ -99,21 +99,109 @@
  (aws--prepare-rows data))
 
 ;; 2023-07-23 Resume
-(defun aws--format-ts (ts)
-  "Format AWS TS to human readable string."
-  (format-time-string "%Y-%m-%d %H:%M:%S" (seconds-to-time (/ ts 1000))))
 
-(defun aws--command (cmd)
-  "Run a cli CMD and return output as a hash-map."
-  (->> cmd
-       (format "aws %s --output json")
-       shell-command-to-string
-       h<-json*))
-
+;; COMMANDS
+;; =====================================================
+(defun aws--command (cmd &rest cmds)
+  "Run a cli CMD and return output as a hash-map, concat CMDS."
+  (let* ((output (->> (cons cmd cmds)
+                      (s-join " ")
+                      (format "aws %s --output json")
+                      shell-command-to-string)))
+    (if (s-contains-p "An error occurred" output)
+        (error "CLI Error: %s" (s-trim output))
+      (condition-case err
+          (h<-json* output)
+        (error (message "Failed to parse CLI output: %S" err))))))
+ 
 (defun aws--describe-log-groups ()
   "Get available log groups."
-  (aws--command "logs describe-log-groups"))
+  (message "Getting log groups...")
+  (h-get (aws--command "logs describe-log-groups") "logGroups"))
 
+(defun aws--describe-log-streams (log-group)
+  "Get available log streams for LOG-GROUP."
+  (message "Getting log streams for %s..." log-group)
+  (h-get (aws--command "logs describe-log-streams --log-group-name" log-group) "logStreams"))
+
+(aws-comment
+ (setq log-group "datomic-blaster-os-v1")
+ (aws--describe-log-streams "datomic-blaster-os-v1")
+ )
+
+;; END COMMANDS
+;; =====================================================
+
+;;  === Common Functions ===
+(defun aws--format-ts (ts)
+  "Format AWS TS to human readable string."
+  (if (integerp ts)
+      (format-time-string "%Y-%m-%d %H:%M:%S" (seconds-to-time (/ ts 1000)))
+    "N/A"))
+
+(defun aws--selected-row ()
+  "Read first column from the selected row of table."
+  (interactive)
+  (if (derived-mode-p 'tabulated-list-mode)
+      (aref (tabulated-list-get-entry) 0)
+    (error "Not in AWS list")))
+
+(defmacro define-aws-list-mode (name description fetch-fn)
+  "Define a mode derived from `tabulated-list-mode'.
+
+NAME - new mode name
+DESCRIPTION - new mode description
+FETCH-FN - arity 0 function that returns formatted rows for the mode"
+  `(define-derived-mode ,name tabulated-list-mode ,description
+     "Heroku app list mode."
+     (let* ((data (,fetch-fn))
+            (columns (aws--prepare-columns data))
+            (rows (aws--prepare-rows data)))
+      (setq tabulated-list-format columns)
+      (setq tabulated-list-entries rows)
+      (tabulated-list-init-header)
+      (tabulated-list-print)
+      (hl-line-mode))))
+;; === End Common Functions ===
+
+;; === Log Streams ===
+(defvar aws--selected-log-group nil "Currently selected AWS log group.")
+
+(aws-comment
+ (aws--describe-log-streams-selected-log-group)
+ (aws--describe-log-streams "datomic-blaster-os")
+ )
+
+(defun aws--log-stream-row (stream)
+  "Turn a log STREAM into table row."
+  (h-let stream
+    `(("Name" 80 ,.logStreamName)
+      ("Created" 20 ,(aws--format-ts .creationTime))
+      ("First Event" 20 ,(aws--format-ts .firstEventTimestamp))
+      ("Last Event" 20 ,(aws--format-ts .lastEventTimestamp))
+      ("Last Ingest" 20 ,(aws--format-ts .lastIngestionTime)))))
+
+
+(defun aws--prepare-log-streams-selected-log-group ()
+  "Run `aws--describe-log-streams' for `aws--selected-log-group', then prepare with `aws--log-streams-table'."
+  (if aws--selected-log-group
+      (aws--log-streams-table (aws--describe-log-streams aws--selected-log-group))
+    (error "`aws--selected-log-group' is nil")))
+
+(defun aws--log-streams-table (streams)
+  "Turn STREAMS produced by `aws--describe-log-streams' into table."
+  (mapcar #'aws--log-stream-row streams))
+
+
+(define-aws-list-mode aws-log-streams-mode "AWS - Log Streams" aws--prepare-log-streams-selected-log-group)
+(define-key aws-log-streams-mode-map (kbd "^") #'aws-log-groups-mode)
+
+(aws-comment
+ (setq streams (aws--describe-log-streams "datomic-blaster-os"))
+ (setq stream (aref streams 0))
+ )
+
+;; ==== Log Groups ====
 (defun aws--log-group-row (group)
   "Turn hash table GROUP produced by `aws--describe-log-groups' into table row."
   (h-let group
@@ -125,40 +213,45 @@
       ;; ("Stored Bytes" ,.storedBytes)
       )))
 
-(defun aws--log-groups-table (map)
-  "Turn MAP produced by `aws--describe-log-groups' into table."
-  (mapcar #'aws--log-group-row (h-get map "logGroups")))
+(defun aws--log-groups-table (groups)
+  "Turn GROUPS produced by `aws--describe-log-groups' into table."
+  (mapcar #'aws--log-group-row groups))
 
-(define-derived-mode aws-log-groups-mode tabulated-list-mode "AWS - Log Groups"
-  "Heroku app list mode."
-  (let* ((groups (->> (aws--describe-log-groups) aws--log-groups-table))
-         (columns (aws--prepare-columns groups))
-         (rows (aws--prepare-rows groups)))
-    (setq tabulated-list-format columns)
-    (setq tabulated-list-entries rows)
-    (tabulated-list-init-header)
-    (tabulated-list-print)
-    (hl-line-mode)))
+(defun aws--prepare-log-groups-table ()
+  "Run `aws--describe-log-groups' then prepare with `aws--log-groups-table'."
+  (->> (aws--describe-log-groups) aws--log-groups-table))
 
+(define-aws-list-mode aws-log-groups-mode "AWS - Log Groups" aws--prepare-log-groups-table)
+
+(defun aws--log-group-list-streams ()
+  "Open log streams list for selected log group."
+  (interactive)
+  (setq aws--selected-log-group (aws--selected-row))
+  (aws-log-streams-mode))
+
+(bind-keys
+ :map aws-log-groups-mode-map
+ ("RET" . aws--log-group-list-streams)
+ ("g" . aws-log-groups))
+
+;; ==================== User Commands =====================
+                                      
 ;;;###autoload
 (defun aws-log-groups ()
   "List all CloudWatch log groups."
   (interactive)
   (let ((buff "*AWS - Log Groups"))
-    (switch-to-buffer-other-window buff)
+    (switch-to-buffer buff)
     (aws-log-groups-mode)))
 
-(aws-comment
- (setq map (aws--describe-log-groups))
- (setq groups (h-get s "logGroups"))
- (setq group (aref groups 0))
- (h-htbl-form s)
- (h-ht-form s)
- (h-keys s)
- (setq sample (aref grps 0))
- (h-keys sample)
- (h-get sample "logGroupName")
- )
+;;;###autoload
+(defun aws-log-streams (log-group)
+  "List all log streams for LOG-GROUP."
+  (interactive (list (read-from-minibuffer "Log group to read streams: " aws--selected-log-group)))
+  (let ((buff "*AWS - Log Streams"))
+    (setq aws--selected-log-group log-group)
+    (switch-to-buffer buff)
+    (aws-log-streams-mode)))
 
 (provide 'aws)
 ;;; aws.el ends here
