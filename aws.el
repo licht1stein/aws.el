@@ -278,7 +278,7 @@ Documentation: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAn
   (message "Log tail args: %s" args)
   (let* ((buffer (format "*AWS Logs: %s*" log-group)))
     (message "Getting AWS logs for %s..." log-group)
-    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" aws--selected-log-group args)
+    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" log-group args)
     (with-current-buffer buffer
       (aws-logs-mode)
       (pop-to-buffer-same-window buffer))))
@@ -386,6 +386,41 @@ Documentation: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAn
  ("s" . aws--log-group-list-streams)
  ("g" . aws-log-groups))
 
+;; ====================  PRESETS =====================
+(defvar aws-log-presets (h*) "Quick presets for AWS logs.")
+
+(cl-defun aws-log-preset (name &key log-group stream-names stream-prefix args (follow t) (format "json"))
+  "Add preset to run from `aws-quick-logs'.
+
+NAME - this will be used in the menu, something like \"MyApp Staging\"
+
+Required keyword args:
+:log-group LOG-GROUP
+  the log group you want to stream from
+
+:stream-names STREAM-NAMES
+  only get logs from these stream names
+
+:stream-prefix STREAM-PREFIX
+  only get logs from streams starting with prefix
+
+:follow FOLLOW (default t)
+  stream logs
+
+:format FORMAT (default \"json\")
+  output format to use
+
+:args ARGS
+  list of other args like '(\"--debug\") etc."
+  (when (and stream-names stream-prefix)
+      (error ":stream-names and :stream-prefix cannot be used together, choose one"))
+  (let* ((main-args (list (when follow "--follow")
+                          (when format (s-concat "--format=" format))
+                          (when stream-names (s-concat "--log-stream-names=" stream-names))
+                          (when stream-prefix (s-concat "--log-stream-name-prefix=" stream-prefix))))
+         (final-args (-non-nil (append main-args args))))
+    (h-put! aws-log-presets name (h* :log-group log-group :args final-args))))
+
 ;; ==================== USER COMMANDS =====================
 ;;;###autoload
 (defun aws-log-groups ()
@@ -403,6 +438,21 @@ Documentation: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAn
     (setq aws--selected-log-group log-group)
     (switch-to-buffer buff)
     (aws-log-streams-mode)))
+
+;;;###autoload
+(defun aws-quick-logs (preset)
+  "Run AWS Log PRESET.
+
+Presets are quick access log streams that you can define in your config."
+  (interactive (list (if-let* ((presets (h-keys aws-log-presets)))
+                         (completing-read "Select AWS Quick Logs preset to stream: " presets)
+                       (error "No presets defined, use `aws-log-preset' to define")) ))
+  (let* ((preset-table (h-get aws-log-presets preset)))
+    (if preset-table
+        (h-let preset-table
+          (message "Log group: %s Args: %s" .log-group .args)
+          (apply #'aws-logs .log-group .args))
+      (error "No preset found: %s" preset))))
 
 (provide 'aws)
 ;;; aws.el ends here
