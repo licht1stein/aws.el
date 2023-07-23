@@ -5,7 +5,7 @@
 ;; Author: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Maintainer: Mykhaylo Bilyanskyy <mb@m1k.pw>
 ;; Version: 0.0.1
-;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0") (xht "2.0.0"))
+;; Package-Requires: ((emacs "27.2") (dash "2.19.1") (s "1.13.0") (ht "2.3"))
 ;;
 ;; Created: 21 Sep 2022
 ;;
