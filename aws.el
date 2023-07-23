@@ -197,6 +197,10 @@ Other:
 
 (define-derived-mode aws-logs-mode comint-mode "AWS Logs" (read-only-mode))
 
+(aws-comment
+ "Fontification by regexp:"
+ (font-lock-add-keywords 'aws-logs-mode '(("\\(\"Msg\"\\|\"Level\"\\|\"Path\"\\|\"Dt\"\\)" 1 font-lock-warning-face))))
+
 (defun aws--log-stream-row (stream)
   "Turn a log STREAM into table row."
   (h-let stream
