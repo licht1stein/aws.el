@@ -188,6 +188,7 @@ Other:
 
 (define-derived-mode aws-logs-mode comint-mode "AWS Logs" (read-only-mode))
 
+;;;###autoload
 (cl-defun aws-logs (log-group &key streams follow)
   "Get AWS logs for LOG-GROUP.
 
