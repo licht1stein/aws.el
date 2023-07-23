@@ -255,7 +255,9 @@ Other:
   (format "{$.%s = %s}" key value))
 
 (defun aws--prompt-for-log-filter-pattern (&rest _)
-  "Prompt the user to define a filter pattern."
+  "Prompt the user to define a filter pattern.
+
+Documentation: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html#metric-filters-extract-json"
   (let* ((json-p (y-or-n-p "Would you like to define a JSON based filter?")))
     (if json-p
         (aws--format-json-filter-pattern
