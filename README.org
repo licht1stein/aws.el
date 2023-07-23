@@ -5,13 +5,15 @@
 ** Straight
 #+begin_src emacs-lisp
   (use-package aws
-    :straight (:type git :host github :repo "licht1stein/aws.el"))
+    :straight (:type git :host github :repo "licht1stein/aws.el")
+    :custom (aws-logs-default-output-format "json")))
 #+end_src
 
 ** Elpaca
 #+begin_src emacs-lisp
   (use-package aws
-    :elpaca (:type git :host github :repo "licht1stein/aws.el"))
+    :elpaca (:type git :host github :repo "licht1stein/aws.el")
+    :custom (aws-logs-default-output-format "json"))
 #+end_src
 ** Missing xht
 If you get an error about missing ~xht~ dependency, install it before ~aws.el~:
