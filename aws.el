@@ -36,6 +36,8 @@
 (require 'dash)
 (require 's)
 (require 'xht)
+(require 'comint)
+(require 'cl-lib)
 
 (defgroup aws nil "AWS.el group." :group 'convenience)
 
@@ -54,6 +56,17 @@
   (if (derived-mode-p 'tabulated-list-mode)
       (aref (tabulated-list-get-entry) 0)
     (error "Not in AWS list")))
+
+(defun aws--prepare-columns (data)
+  "Prepare columns from DATA."
+  (->> (--map (list (car it) (cadr it)) (car data))
+       (apply #'vector)))
+
+(defun aws--prepare-rows (data)
+  "Prepare rows from DATA."
+  (let ((lists   (-map (lambda (el) (->> (-flatten (-map 'cddr el)) )) data)))
+    (-map (lambda (el) `(nil [,@el])) lists)))
+
 
 (defmacro define-aws-list-mode (name description fetch-fn)
   "Define a mode derived from `tabulated-list-mode'.
@@ -85,32 +98,84 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
 
 ;; CLI COMMANDS
 ;; =====================================================
-(defun aws--command (cmd &rest cmds)
-  "Run a cli CMD and return output as a hash-map, concat CMDS."
-  (let* ((output (->> (cons cmd cmds)
+(defun aws--command-prepare (cmd &rest args)
+  "Prepare a command string for AWS CLI using CMD and ARGS.
+CMD is the AWS command to execute. ARGS is the list of additional arguments for the command."
+  (let ((command (->> (cons cmd args)
                       (s-join " ")
-                      (format "aws %s --output json")
-                      shell-command-to-string)))
-    (if (s-contains-p "An error occurred" output)
-        (error "CLI Error: %s" (s-trim output))
+                      (s-replace "aws " ""))))
+    (format "aws %s --output json --no-cli-auto-prompt"
+            (if (s-starts-with-p "aws" command)
+                (substring command 4)
+              command))))
+
+(defun aws--command-to-string (cmd &rest args)
+  "Run an aws cli CMD with ARGS and return string output."
+  (->> (apply #'aws--command-prepare cmd args)
+       shell-command-to-string))
+
+(defun aws--error-p (string)
+  "Check if STRING string is an AWS CLI error."
+  (or (s-contains-p "An error occurred" string)
+      (s-contains-p "Could not" string)))
+
+(defun aws-command-to-map(cmd &rest args)
+  "Run a cli CMD with ARGS and return output as a hash-map."
+  (let* ((output (apply #'aws--command-to-string cmd args)))
+    (if (aws--error-p output)
+        (error (s-trim output))
       (condition-case err
           (h<-json* output)
         (error (message "Failed to parse CLI output: %S" err))))))
- 
+
 (defun aws--describe-log-groups ()
   "Get available log groups."
   (message "Getting log groups...")
-  (h-get (aws--command "logs describe-log-groups") "logGroups"))
+  (h-get (aws-command-to-map"logs describe-log-groups") "logGroups"))
 
-(defun aws--describe-log-streams (log-group)
-  "Get available log streams for LOG-GROUP."
+(cl-defun aws--describe-log-streams
+    (log-group &key (order-by "LastEventTime") (max-items 500) prepare-only)
+  "Run describe log streams for the specified LOG-GROUP.
+
+Accept the following keyword args:
+
+:order-by ORDER-BY (default \"LastEventTime\")
+          If the value is LogStreamName ,  the  results  are  ordered  by  log
+          stream name. If the value is LastEventTime , the results are ordered
+          by the event time. The default value is LogStreamName .
+
+          If you order the results by  event  time,  you  cannot  specify  the
+          logStreamNamePrefix parameter.
+              lastEventTimestamp  represents  the  time of the most recent log
+              event in the log stream  in  CloudWatch  Logs.  This  number  is
+              expressed  as  the  number  of  milliseconds  after  Jan 1, 1970
+              00:00:00 UTC . lastEventTimestamp updates on an eventual consis-
+              tency  basis.  It  typically  updates  in less than an hour from
+              ingestion, but in rare situations might take longer.
+
+:max-items MAX-ITEMS (default 500)
+          The  total number of items to return in the command's output. If the
+          total number of items available is more than the value specified,  a
+          NextToken is provided in the command's output. To resume pagination,
+          provide the NextToken value in the starting-token argument of a sub-
+          sequent  command. Do not use the NextToken response element directly
+          outside of the AWS CLI.
+
+Other:
+:prepare-only PREPARE-ONLY
+          Returns the final string command to run in shell and adds it to kill
+          ring."
   (message "Getting log streams for %s..." log-group)
-  (h-get (aws--command "logs describe-log-streams --log-group-name" log-group) "logStreams"))
-
-(aws-comment
- (setq log-group "datomic-blaster-os-v1")
- (aws--describe-log-streams "datomic-blaster-os-v1")
- )
+  (let* ((command (aws--command-prepare
+                   "logs describe-log-streams --log-group-name" log-group
+                   "--order-by" order-by
+                   "--descending"
+                   (when max-items (s-concat "--max-items " (format "%s" max-items)) ))))
+    (if prepare-only
+        (progn
+          (kill-new command)
+          command)
+      (h-get (aws-command-to-map command) "logStreams"))))
 
 ;; END CLI COMMANDS
 ;; =====================================================
@@ -119,13 +184,24 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
 ;; === Log Streams ===
 (defvar aws--selected-log-group nil "Currently selected AWS log group.")
 
-(aws-comment
- (aws--describe-log-streams-selected-log-group)
- (setq streams (aws--describe-log-streams "datomic-blaster-os"))
- (setq tbl (aws--log-groups-table streams))
+(define-derived-mode aws-logs-mode comint-mode "AWS Logs" (read-only-mode))
 
- (aws--sort-table-str tbl "Created" t)
- )
+(cl-defun aws-logs (log-group &key streams follow)
+  "Get AWS logs for LOG-GROUP.
+
+Accept keyword arguments:
+:streams STREAMS to filter by
+:follow FOLLOW - tail logs"
+  (interactive (list (read-from-minibuffer "Log group to stream: ")))
+  (let* ((buffer (format "*AWS Logs: %s*" log-group))
+         (follow-arg (when follow '("--follow")))
+         (streams-arg (when streams (list "--log-stream-names" streams)))
+         (args (append follow-arg streams-arg)))
+    (message "Getting AWS logs: %s..." log-group)
+    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" log-group args)
+    (with-current-buffer buffer
+      (aws-logs-mode)
+      (pop-to-buffer-same-window buffer))))
 
 (defun aws--log-stream-row (stream)
   "Turn a log STREAM into table row."
@@ -136,7 +212,6 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
       ("Last Event" 20 ,(aws--format-ts .lastEventTimestamp))
       ("Last Ingest" 20 ,(aws--format-ts .lastIngestionTime)))))
 
-
 (defun aws--prepare-log-streams-selected-log-group ()
   "Run `aws--describe-log-streams' for `aws--selected-log-group', then prepare with `aws--log-streams-table'."
   (if aws--selected-log-group
@@ -145,16 +220,23 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
 
 (defun aws--log-streams-table (streams)
   "Turn STREAMS produced by `aws--describe-log-streams' into table."
-  (aws--sort-table (mapcar #'aws--log-stream-row streams) "Created"))
-
+  (mapcar #'aws--log-stream-row streams))
 
 (define-aws-list-mode aws-log-streams-mode "AWS - Log Streams" aws--prepare-log-streams-selected-log-group)
-(define-key aws-log-streams-mode-map (kbd "^") #'aws-log-groups-mode)
 
-(aws-comment
- (setq streams (aws--describe-log-streams "datomic-blaster-os"))
- (setq stream (aref streams 0))
- )
+(bind-keys
+ :map aws-log-streams-mode-map
+ ("^" .  aws-log-groups-mode))
+
+(defun aws--logs-stream-list-tail-logs ()
+  "Tail logs of the currently selected AWS Log Stream in the AWS Log Group from the custom AWS Log Viewer interface."
+  (interactive)
+  (let ((stream (aws--selected-row)))
+    (aws-logs aws--selected-log-group :streams stream :follow t)))
+
+(bind-keys
+ :map aws-log-streams-mode-map
+ ("RET" . aws--logs-stream-list-tail-logs))
 
 ;; ==== Log Groups ====
 (defun aws--log-group-row (group)
@@ -183,6 +265,7 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
 (bind-keys
  :map aws-log-groups-mode-map
  ("RET" . aws--log-group-list-streams)
+ ("l" . (lambda () (interactive) (aws-logs (aws--selected-row) :follow t)))
  ("g" . aws-log-groups))
 
 ;; ==================== USER COMMANDS =====================
