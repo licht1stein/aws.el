@@ -78,7 +78,6 @@ NAME - new mode name
 DESCRIPTION - new mode description
 FETCH-FN - arity 0 function that returns formatted rows for the mode"
   `(define-derived-mode ,name tabulated-list-mode ,description
-     "Heroku app list mode."
      (let* ((data (,fetch-fn))
             (columns (aws--prepare-columns data))
             (rows (aws--prepare-rows data)))
