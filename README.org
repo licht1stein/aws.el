@@ -8,6 +8,12 @@
     :elpaca (:type git :host github :repo "licht1stein/aws.el"))
 #+end_src
 
+* Usage
+Available commands:
+- ~aws-log-groups~
+- ~aws-log-streams~
+- ~aws-logs~
+
 ** Elpaca
 #+begin_src emacs-lisp
   (use-package aws
