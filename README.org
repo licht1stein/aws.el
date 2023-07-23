@@ -1,6 +1,37 @@
 #+TITLE: Emacs interface for AWS CLI
 
 *WARNING: EARLY STAGE OF DEVELOPMENT*
+* Install
+** Straight
+#+begin_src emacs-lisp
+  (use-package aws
+    :elpaca (:type git :host github :repo "licht1stein/aws.el"))
+#+end_src
 
-* Babashka tasks
+** Elpaca
+#+begin_src emacs-lisp
+  (use-package aws
+    :elpaca (:type git :host github :repo "licht1stein/aws.el"))
+#+end_src
+
+If you're getting an error that package ~xht~ is not available, install it as well (and use it if you're programming in elisp, it's great):
+
+#+begin_src elisp
+  (use-package xht
+  :elpaca (:type git :repo "https://git.sr.ht/~flandrew/xht")
+  :commands (global-xht-fontify-mode
+             global-xht-do-mode
+             xht-fontify-mode
+             xht-do-mode
+             xht-see-readme)
+  :config
+  (global-xht-fontify-mode)
+  (global-xht-do-mode))
+
+#+end_src
+
+* Development
+** Babashka tasks
 We use [[https://babashka.org][babashka]] tasks and [[https://github.com/doublep/eldev/][eldev]] to prepare, lint and test the project. Once eldev and babashka are installed run ~bb tasks~ to see the list of available commands.
+
+
