@@ -193,6 +193,7 @@ Other:
 ;; WORKING WITH AWS CLOUDWATCH LOGS (aws logs)
 ;; === Log Streams ===
 (defvar aws--selected-log-group nil "Currently selected AWS log group.")
+(defvar aws--selected-stream nil "Currently selected log group stream.")
 
 (define-derived-mode aws-logs-mode comint-mode "AWS Logs" (read-only-mode))
 
@@ -235,10 +236,6 @@ Accept keyword arguments:
 
 (define-aws-list-mode aws-log-streams-mode "AWS - Log Streams" aws--prepare-log-streams-selected-log-group)
 
-(bind-keys
- :map aws-log-streams-mode-map
- ("^" .  aws-log-groups-mode))
-
 (defun aws--logs-stream-list-tail-logs ()
   "Tail logs of the currently selected AWS Log Stream in the AWS Log Group from the custom AWS Log Viewer interface."
   (interactive)
@@ -277,20 +274,13 @@ Accept keyword arguments:
 (defun aws--logs-from-transient (&optional args)
   "Get AWS logs for log group using ARGS."
   (interactive (list (transient-args 'aws-log-groups-transient)))
-  (let* ((buffer (format "*AWS Logs: %s*" (aws--selected-row))))
-    (message "Getting AWS logs for %s..." (aws--selected-row))
-    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" (aws--selected-row) args)
+  (message "Transient args: %s" args)
+  (let* ((buffer (format "*AWS Logs: %s*" aws--selected-log-group)))
+    (message "Getting AWS logs for %s..." aws--selected-log-group)
+    (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" aws--selected-log-group args)
     (with-current-buffer buffer
       (aws-logs-mode)
       (pop-to-buffer-same-window buffer))))
-
-(bind-keys
- :map aws-log-groups-mode-map
- ("RET" . aws--log-group-list-streams)
- ("l" . (lambda () (interactive)
-          (setq aws--selected-log-group (aws--selected-row))
-          (aws-log-groups-transient)))
- ("g" . aws-log-groups))
 
 (defun aws--select-log-stream (&rest _)
   "Get options and prompt user for log stream name."
@@ -316,11 +306,23 @@ Accept keyword arguments:
   (propertize s 'face 'transient-argument))
 
 ;; ==================== TRANSIENT =====================
+(transient-define-prefix aws-log-groups-main ()
+  "AWS Log groups transient."
+  [["Commands"
+    ("l" "Logs" aws-log-groups-tail-log)
+    ("s" "List streams" aws--log-group-list-streams)
+    ("g" "Refresh log groups" aws-log-groups)]])
+
+(transient-define-prefix aws-log-streams-main ()
+  "AWS Log groups transient."
+  [["Commands"
+    ("l" "Logs" aws-log-streams-tail-log)
+    ("^" "Back to log groups" aws-log-groups)]])
 
 (transient-define-argument aws-log-group-stream-names ()
   :description "Select log stream (will fetch from AWS)"
   :class 'transient-option
-  :argument "--log-stream-name="
+  :argument "--log-stream-names="
   :choices #'aws--select-log-stream)
 
 (transient-define-argument aws-log-group-filter-pattern ()
@@ -335,24 +337,62 @@ Accept keyword arguments:
   :argument "--format="
   :choices '("short" "detailed" "json"))
 
-(transient-define-prefix aws-log-groups-transient ()
-  "AWS log groups transient."
-  :value (list "--follow" (format "--format=%s" aws-logs-default-output-format))
+(transient-define-prefix aws-log-groups-tail-log ()
+  "AWS tail logs transient."
+  :value (lambda () (list "--follow" (format "--format=%s" aws-logs-default-output-format)))
   [:description (lambda () (s-concat "Tail Logs for " (aws--bold aws--selected-log-group) "\n"))
-   ["Options"
-    ("-f" "filter pattern to use (for json use dot-notation)" aws-log-group-filter-pattern)
-    ("-n" "log stream names (fetch options)" aws-log-group-stream-names)
-    ("-N" "prefix to filter logs by" "--log-stream-name-prefix=")
-    ("-o" "output format" aws-log-format)
-    ("-s" "since (s, m, h, d, w) e.g. 10m" "--since=")
-    ("-F" "continually stream logs" "--follow")]
-   ["Global options"
-    ("-d" "debug" "--debug")]]
+                ["Options"
+                 ("-f" "filter pattern to use (for json use dot-notation)" aws-log-group-filter-pattern)
+                 ("-n" "log stream names (fetch options)" aws-log-group-stream-names)
+                 ("-N" "prefix to filter logs by" "--log-stream-name-prefix=")
+                 ("-o" "output format" aws-log-format)
+                 ("-s" "since (s, m, h, d, w) e.g. 10m" "--since=")
+                 ("-F" "continually stream logs" "--follow")]
+                ["Global options"
+                 ("-d" "debug" "--debug")]]
+  ["Execute"
+   ("l" "tail logs" aws--logs-from-transient)])
+
+(transient-define-prefix aws-log-streams-tail-log ()
+  "AWS tail logs transient."
+  :value (lambda () (list "--follow"
+                          (format "--format=%s" aws-logs-default-output-format)
+                          (format "--log-stream-names=%s" aws--selected-stream)))
+  [:description (lambda () (format "Tail Logs for %s stream %s\n" (aws--bold aws--selected-log-group) (aws--bold aws--selected-stream)))
+                ["Options"
+                 ("-f" "filter pattern to use (for json use dot-notation)" aws-log-group-filter-pattern)
+                 ("-n" "log stream name" "--log-stream-names=")
+                 ("-o" "output format" aws-log-format)
+                 ("-s" "since (s, m, h, d, w) e.g. 10m" "--since=")
+                 ("-F" "continually stream logs" "--follow")]
+                ["Global options"
+                 ("-d" "debug" "--debug")]]
   ["Execute"
    ("l" "tail logs" aws--logs-from-transient)])
 
 
 ;; ==================== END TRANSIENT =====================
+
+;; ==================== KEY BINDINGS ======================
+
+(bind-keys
+ :map aws-log-streams-mode-map
+ ("?" . aws-log-streams-main)
+ ("RET" . aws-log-streams-main)
+ ("^" .  aws-log-groups-mode)
+ ("l" . (lambda () (interactive)
+          (setq aws--selected-stream (aws--selected-row))
+          (aws-log-streams-tail-log))))
+
+(bind-keys
+ :map aws-log-groups-mode-map
+ ("RET" . aws-log-groups-main)
+ ("?" . aws-log-groups-main)
+ ("l" . (lambda () (interactive)
+          (setq aws--selected-log-group (aws--selected-row))
+          (aws-log-groups-tail-log)))
+ ("s" . aws--log-group-list-streams)
+ ("g" . aws-log-groups))
 
 ;; ==================== USER COMMANDS =====================
 ;;;###autoload
