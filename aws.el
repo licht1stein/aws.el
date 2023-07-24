@@ -161,16 +161,13 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
   "Convert HICCUP into AWS Cloudwatch JSON syntax for filtering.
   
 Examples of usage:
- (aws-js-filter '[:and [\"foo\" = 1] [:or [\"foo\" != 2] [\"foo\" != 3]]])
+ (aws-cwjs '[:and [\"foo\" = 1] [:or [\"foo\" != 2] [\"foo\" != 3]]])
 
- (aws-js-filter '[:or [:and [\"Msg\" != \"foo\"] [\"Msg\" != \"bar\"]] 
+ (aws-cwjs '[:or [:and [\"Msg\" != \"foo\"] [\"Msg\" != \"bar\"]] 
             [:or [\"Level\" = \"Warn\"] [\"Level\" = \"Error\"]]])
 
- (aws-js-filter '[:and [\"Msg\" != [\"foo\" \"bar\"]]])"
+ (aws-cwjs '[:and [\"Msg\" != [\"foo\" \"bar\"]]])"
   (format "{ %s }" (aws--json-filter-hiccup hiccup)))
-
-(hiccup-to-cloudwatch  ' [:or ["foo" = "bar"] ["foo" = 1]])
-
 
 ;; === END COMMON FUNCTIONS ===
 
