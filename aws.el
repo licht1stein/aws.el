@@ -105,7 +105,7 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
         (reverse sorted)
       sorted)))
 
-(defun aws-make-json-filter (filters)
+(cl-defun aws-make-json-filter (filters &key (sep "&&"))
   "Generate a filter expression based on given FILTERS list.
 
   Each element of FILTERS list is itself a list with three elements:
@@ -113,17 +113,65 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
   - Operator: comparison operator such as '=' and '!='
   - List of values: for which filter expressions will be generated.
 
+  Additionally you can provide :sep SEP keyword argument to join the filters
+  (default is \"&&\" for AND, you can use \"||\" for OR).
+
   Generates a string of filter expressions in the form:
   {($.Key Operator \"value1\") && ($.Key Operator \"value2\") ...}
 
   Number values are not quoted, string values are quoted."
   (format "{%s}"
           (mapconcat (lambda (filter)
-		       (mapconcat (lambda (value) (format "($.%s %s %s)" (nth 0 filter) (nth 1 filter)
-							  (if (stringp value) (format "\"%s\"" value) value)))
-				  (eval (nth 2 filter)) " && "))
-		     filters
-		     " && ")))
+		                   (mapconcat (lambda (value) (format "($.%s %s %s)" (nth 0 filter) (nth 1 filter)
+							                                            (if (stringp value) (format "\"%s\"" value) value)))
+				                          (eval (nth 2 filter)) (format " %s " sep)))
+		                 filters
+		                 (format " %s " sep))))
+
+(defvar aws-cloudwatch-op-map
+  '#s(hash-table
+      size 65
+      test eq
+      data (:and "&&"
+                 :or "||"
+                 = "="
+                 != "!="))
+  "Column to operator map used for AWS Cloudwatch JSON filter construction.")
+
+(defun aws--json-filter-hiccup (hiccup-json)
+  "Convert a HICCUP-JSON object to AWS Cloudwatch JSON pattern string."
+  (let ((symbol-op (gethash (elt hiccup-json 0) aws-cloudwatch-op-map)))
+    (if symbol-op
+        (concat "(" 
+                (mapconcat 
+                 (lambda (i)
+                   (if (vectorp i)
+                       (aws--json-filter-hiccup i)
+                     i))
+                 (cdr (append hiccup-json nil))
+                 (format " %s " symbol-op))
+                ")")
+      (format "$.%s %s %s" (elt hiccup-json 0) 
+              (gethash (elt hiccup-json 1) aws-cloudwatch-op-map) 
+              (if (stringp (elt hiccup-json 2)) 
+                  (format "\"%s\"" (elt hiccup-json 2)) 
+                (elt hiccup-json 2))))))
+
+(defun aws-cwjs (hiccup)
+  "Convert HICCUP into AWS Cloudwatch JSON syntax for filtering.
+  
+Examples of usage:
+ (aws-js-filter '[:and [\"foo\" = 1] [:or [\"foo\" != 2] [\"foo\" != 3]]])
+
+ (aws-js-filter '[:or [:and [\"Msg\" != \"foo\"] [\"Msg\" != \"bar\"]] 
+            [:or [\"Level\" = \"Warn\"] [\"Level\" = \"Error\"]]])
+
+ (aws-js-filter '[:and [\"Msg\" != [\"foo\" \"bar\"]]])"
+  (format "{ %s }" (aws--json-filter-hiccup hiccup)))
+
+(hiccup-to-cloudwatch  ' [:or ["foo" = "bar"] ["foo" = 1]])
+
+
 ;; === END COMMON FUNCTIONS ===
 
 ;; CLI COMMANDS
@@ -218,7 +266,7 @@ Other:
 (define-derived-mode aws-logs-mode comint-mode "AWS Logs" (read-only-mode))
 
 (font-lock-add-keywords 'aws-logs-mode '(("\"Level\":\\s-*\":info\"" . font-lock-string-face)))
-
+(font-lock-add-keywords 'aws-logs-mode '(("\"Level\":\\s-*\":info\"" . font-lock-warning-face)))
 (aws-comment
  "Fontification by regexp:"
  (font-lock-add-keywords 'aws-logs-mode '(("\\(\"Msg\"\\|\"Level\"\\|\"Path\"\\|\"Dt\"\\)" 1 font-lock-warning-face))))
@@ -411,7 +459,7 @@ Documentation: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAn
 ;; ====================  PRESETS =====================
 (defvar aws-log-presets (h*) "Quick presets for AWS logs.")
 
-(cl-defun aws-log-preset (name &key log-group stream-names stream-prefix args filter-pattern (follow t) (format "json"))
+(cl-defun aws-log-preset (name &key log-group stream-names stream-prefix args filter-pattern since (follow t) (format "json"))
   "Add preset to run from `aws-quick-logs'.
 
 NAME - this will be used in the menu, something like \"MyApp Staging\"
@@ -440,7 +488,10 @@ Required keyword args:
                           (when format (s-concat "--format=" format))
                           (when stream-names (s-concat "--log-stream-names=" stream-names))
                           (when stream-prefix (s-concat "--log-stream-name-prefix=" stream-prefix))
-                          (when filter-pattern (s-concat "--filter-pattern=" filter-pattern))))
+                          (when filter-pattern (s-concat "--filter-pattern=" (if (vectorp filter-pattern)
+                                                                               (aws-cwjs filter-pattern)
+                                                                               filter-pattern)))
+                          (when since (s-concat "--since=" since))))
          (final-args (-non-nil (append main-args args))))
     (h-put! aws-log-presets name (h* :log-group log-group :args final-args))))
 

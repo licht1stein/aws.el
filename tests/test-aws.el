@@ -49,6 +49,14 @@
     (it "check list formatting for aws s3 ls"
       (expect (aws--s3-ls-format aws-test-example-ls) :to-equal aws-test-example-ls-s3-output)))
 
+(describe
+ "hiccup tests"
+ (it "check output"
+   (expect (aws-cwjs '[:and ["foo" = 1] ["spam.second[0]" != "other"]])
+           :to-equal "{ ($.foo = 1 && $.spam.second[0] != \"other\") }")
+   (expect (aws-cwjs '[:and [:or ["foo" = 1] ["foo" != "2"]] [:and ["spam" = 1] ["spam" != "not="]]])
+           :to-equal "{ (($.foo = 1 || $.foo != \"2\") && ($.spam = 1 && $.spam != \"not=\")) }")))
+
 
 (provide 'test-aws)
 ;;; test-aws.el ends here
