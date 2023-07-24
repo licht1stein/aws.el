@@ -104,6 +104,26 @@ FETCH-FN - arity 0 function that returns formatted rows for the mode"
     (if reverse
         (reverse sorted)
       sorted)))
+
+(defun aws-make-json-filter (filters)
+  "Generate a filter expression based on given FILTERS list.
+
+  Each element of FILTERS list is itself a list with three elements:
+  - Key: string to be compared
+  - Operator: comparison operator such as '=' and '!='
+  - List of values: for which filter expressions will be generated.
+
+  Generates a string of filter expressions in the form:
+  {($.Key Operator \"value1\") && ($.Key Operator \"value2\") ...}
+
+  Number values are not quoted, string values are quoted."
+  (format "{%s}"
+          (mapconcat (lambda (filter)
+		       (mapconcat (lambda (value) (format "($.%s %s %s)" (nth 0 filter) (nth 1 filter)
+							  (if (stringp value) (format "\"%s\"" value) value)))
+				  (eval (nth 2 filter)) " && "))
+		     filters
+		     " && ")))
 ;; === END COMMON FUNCTIONS ===
 
 ;; CLI COMMANDS
@@ -197,6 +217,8 @@ Other:
 
 (define-derived-mode aws-logs-mode comint-mode "AWS Logs" (read-only-mode))
 
+(font-lock-add-keywords 'aws-logs-mode '(("\"Level\":\\s-*\":info\"" . font-lock-string-face)))
+
 (aws-comment
  "Fontification by regexp:"
  (font-lock-add-keywords 'aws-logs-mode '(("\\(\"Msg\"\\|\"Level\"\\|\"Path\"\\|\"Dt\"\\)" 1 font-lock-warning-face))))
@@ -205,7 +227,7 @@ Other:
   "Turn a log STREAM into table row."
   (h-let stream
     `(("Name" 80 ,.logStreamName)
-      ("Created" 20 ,(aws--format-ts .creationTime))
+      ("Created" 20 ,(aws--format-ts .creationTime)) 
       ("First Event" 20 ,(aws--format-ts .firstEventTimestamp))
       ("Last Event" 20 ,(aws--format-ts .lastEventTimestamp))
       ("Last Ingest" 20 ,(aws--format-ts .lastIngestionTime)))))
@@ -389,7 +411,7 @@ Documentation: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAn
 ;; ====================  PRESETS =====================
 (defvar aws-log-presets (h*) "Quick presets for AWS logs.")
 
-(cl-defun aws-log-preset (name &key log-group stream-names stream-prefix args (follow t) (format "json"))
+(cl-defun aws-log-preset (name &key log-group stream-names stream-prefix args filter-pattern (follow t) (format "json"))
   "Add preset to run from `aws-quick-logs'.
 
 NAME - this will be used in the menu, something like \"MyApp Staging\"
@@ -417,7 +439,8 @@ Required keyword args:
   (let* ((main-args (list (when follow "--follow")
                           (when format (s-concat "--format=" format))
                           (when stream-names (s-concat "--log-stream-names=" stream-names))
-                          (when stream-prefix (s-concat "--log-stream-name-prefix=" stream-prefix))))
+                          (when stream-prefix (s-concat "--log-stream-name-prefix=" stream-prefix))
+                          (when filter-pattern (s-concat "--filter-pattern=" filter-pattern))))
          (final-args (-non-nil (append main-args args))))
     (h-put! aws-log-presets name (h* :log-group log-group :args final-args))))
 
@@ -440,13 +463,14 @@ Required keyword args:
     (aws-log-streams-mode)))
 
 ;;;###autoload
-(defun aws-quick-logs (preset)
+(defun aws-quick-logs (preset &optional arg)
   "Run AWS Log PRESET.
 
 Presets are quick access log streams that you can define in your config."
   (interactive (list (if-let* ((presets (h-keys aws-log-presets)))
                          (completing-read "Select AWS Quick Logs preset to stream: " presets)
-                       (error "No presets defined, use `aws-log-preset' to define")) ))
+                       (error "No presets defined, use `aws-log-preset' to define")) "P"))
+  (message "ARGH!")
   (let* ((preset-table (h-get aws-log-presets preset)))
     (if preset-table
         (h-let preset-table
