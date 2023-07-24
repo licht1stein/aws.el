@@ -343,12 +343,12 @@ Documentation: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAn
 (defun aws-logs (log-group &rest args)
   "Get AWS logs for LOG-GROUP using ARGS."
   (message "Log tail args: %s" args)
-  (let* ((buffer (format "*AWS Logs: %s*" log-group)))
+   (let* ((buffer (format "*AWS Logs: %s*" (format "%s - %s" log-group (format-time-string "%T")))))
     (message "Getting AWS logs for %s..." log-group)
     (apply #'make-comint-in-buffer "aws-logs" buffer "aws" nil "logs" "tail" log-group args)
     (with-current-buffer buffer
       (aws-logs-mode)
-      (pop-to-buffer-same-window buffer))))
+      (pop-to-buffer buffer))))
 
 (defun aws--logs-tail-from-groups (args)
   "Tail logs from selected AWS log groups.
